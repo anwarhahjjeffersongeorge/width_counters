@@ -1,0 +1,9 @@
+[package]
+name = "width_counters"
+authors = ["Anwar Hahj Jefferson-George"]
+version = "0.1.0"
+edition = "2021"
+description = "Atomic counters with variable bit widths"
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
