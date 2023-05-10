@@ -3,7 +3,15 @@ name = "width_counters"
 authors = ["Anwar Hahj Jefferson-George"]
 version = "0.1.0"
 edition = "2021"
-description = "Atomic counters with variable bit widths"
+description = "Atomic counters with variable bit widths and customizable atomic ordering"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+paste = "1.0.12"
+ron = { version = "0.8.0", optional = true }
+serde = { version = "1.0.162", default-features = false, features = ["derive"], optional = true }
+strum = { version = "0.24.1", features = ["derive"] }
+
+[features]
+default = []
+serde = ["dep:ron", "dep:serde"]

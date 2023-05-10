@@ -1,14 +1,16 @@
-pub fn add(left: usize, right: usize) -> usize {
-    left + right
-}
+//! Atomic, monotonically increasing counters of differing integer widths
+//!
+//! ### Comes with
+//! These counters support
+//! - Incrementing by default (1) or jumping by specified amounts,  
+//! - Using per-operation [atomic orderings](core::sync::atomic::Ordering), ([see this also](https://en.cppreference.com/w/c/atomic/memory_order))  
+//! - Const instantiation with default offset (0) and default ordering ([sequentially consistent](Ordering::SeqCst)),  
+//! - Const instantiation with custom offset, custom ordering or both, and  
+//! - PartialEq, Eq, Hash, PartialOrd, Ord, Clone, Debug, Display  
+//!
+//! ### Optional features 
+//! - `serde`: Enable de/serialization
+#![no_std]
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn it_works() {
-        let result = add(2, 2);
-        assert_eq!(result, 4);
-    }
-}
+mod counter;
+pub use counter::*;
