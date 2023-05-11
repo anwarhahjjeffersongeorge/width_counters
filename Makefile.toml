@@ -2,8 +2,5 @@
 description = "Generate a readme file"
 category = "Build"
 command = "cargo"
-args = ["rdme"]
-
-[tasks.pre-docs]
-category = "Documentation"
-dependencies = ["generate-readme"]
+toolchain = "nightly"
+args = ["sync-rdme"]

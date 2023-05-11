@@ -20,3 +20,17 @@ strum = { version = "0.24.1", features = ["derive"] }
 [features]
 default = []
 serde = ["dep:ron", "dep:serde"]
+
+[badges]
+maintenance = { status = "actively-developed" }
+
+[package.metadata.cargo-sync-rdme.badge]
+style = "for-the-badge"
+
+[package.metadata.cargo-sync-rdme.badge.badges-usability]
+license = true 
+crates-io = true
+docs-rs = true
+[package.metadata.cargo-sync-rdme.badge.badges-development]
+maintenance = true
+github-actions = { workflows = [] }
