@@ -1,8 +1,13 @@
 [package]
 name = "width_counters"
-authors = ["Anwar Hahj Jefferson-George"]
+authors = ["Anwar Hahj Jefferson-George <anwarhahjjeffersongeorge@gmail.com>"]
+license = "MIT OR Apache-2.0"
 version = "0.1.0"
 edition = "2021"
+readme = "README.md"
+repository = "https://github.com/anwarhahjjeffersongeorge/width_counters"
+keywords = ["counter", "atomic", "integer", "width", "ordering"]
+categories = ["no-std", "rust-patterns", "embedded"]
 description = "Atomic counters with variable bit widths and customizable atomic ordering"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 

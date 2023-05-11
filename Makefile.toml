@@ -1,0 +1,9 @@
+[tasks.generate-readme]
+description = "Generate a readme file"
+category = "Build"
+command = "cargo"
+args = ["rdme"]
+
+[tasks.pre-docs]
+category = "Documentation"
+dependencies = ["generate-readme"]
