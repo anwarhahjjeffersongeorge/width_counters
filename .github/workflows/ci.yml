@@ -15,7 +15,7 @@ jobs:
     - name: Checkout
       uses: actions/checkout@v2
     - name: Install rust 
-      uses: actions-rs/toolchain@v1
+      uses: actions-rs/toolchain@v1.0.6
       with:
         toolchain: ${{ matrix.rust }}
         profile: minimal
@@ -27,16 +27,21 @@ jobs:
         args: --debug cargo-make
     - name: Run CI
       if: matrix.rust != 'nightly'
-      uses: actions-rs/cargo@v1
+      uses: actions-rs/cargo@v1.0.1
       with:
         command: make
         args: ci-flow
-  build-docs-after-ci:
+  build-docs:
     needs: ci
     runs-on: ubuntu-latest
     steps:
-    - name: Generate readme
+    - name: Install cargo-make
       uses: actions-rs/cargo@v1
+      with: 
+        command: install
+        args: --debug cargo-make
+    - name: Generate readme
+      uses: actions-rs/cargo@v1.0.1
       with:
         command: make
         args: generate-readme
