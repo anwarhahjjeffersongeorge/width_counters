@@ -1,5 +1,7 @@
 name: CI
 on: [push, pull_request]
+permissions:
+  contents: write
 env:
   CLICOLOR_FORCE: 1
 jobs: 
@@ -13,7 +15,7 @@ jobs:
         os: [ubuntu-latest, windows-latest, macOS-latest]
     steps:
     - name: Checkout
-      uses: actions/checkout@v2
+      uses: actions/checkout@v3
     - name: Install rust 
       uses: actions-rs/toolchain@v1.0.6
       with:
@@ -21,7 +23,7 @@ jobs:
         profile: minimal
         override: true
     - name: Install cargo-make
-      uses: actions-rs/cargo@v1
+      uses: actions-rs/cargo@v1.0.1
       with: 
         command: install
         args: --debug cargo-make
@@ -32,11 +34,12 @@ jobs:
         command: make
         args: ci-flow
   build-docs:
+    name: Build documentation
     needs: ci
     runs-on: ubuntu-latest
     steps:
     - name: Checkout
-      uses: actions/checkout@v2
+      uses: actions/checkout@v3
     - name: Install rust nightly
       uses: actions-rs/toolchain@v1.0.6
       with:
@@ -44,7 +47,7 @@ jobs:
         profile: minimal
         override: true
     - name: Install cargo-make
-      uses: actions-rs/cargo@v1
+      uses: actions-rs/cargo@v1.0.1
       with: 
         command: install
         args: --debug cargo-make
@@ -57,4 +60,5 @@ jobs:
       run: |
         git config --local user.name "Github Actions[bot]"
         git config --local user.email "41898282+github-actions[bot]@users.noreply.github.com"
-        git commit README.md -m "Automated readme generation triggered by ${{ github.ref }}" | exit 0
+        git commit README.md -m "Automated readme generation triggered by ${{ github.ref }} at $(date --rfc-3339=seconds)" 
+        git push
