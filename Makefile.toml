@@ -3,4 +3,4 @@ description = "Generate a readme file"
 category = "Build"
 command = "cargo"
 toolchain = "nightly"
-args = ["sync-rdme"]
+args = ["sync-rdme", "--all-features"]

@@ -1,8 +1,7 @@
 //! Counters
 
 use core::{
-    cmp,
-    fmt,
+    cmp, fmt,
     hash::{Hash, Hasher},
     i16, i32, i64, i8, isize,
     sync::atomic::*,
@@ -234,7 +233,7 @@ macro_rules! make_counter {
       }
 
       impl Clone for [<$Prefix $Unit:camel>] {
-        fn clone(&self) -> Self { 
+        fn clone(&self) -> Self {
           Self::new_from_offset_with_ordering(self.get(), self.ordering)
         }
       }
@@ -242,7 +241,7 @@ macro_rules! make_counter {
       impl Default for [<$Prefix $Unit:camel>] {
         fn default() -> Self { Self::new() }
       }
-      
+
       #[allow(non_snake_case)]
       mod [<eq_partial_eq_hash_ $Prefix $Unit:camel >] {
         use super::*;
@@ -270,7 +269,7 @@ macro_rules! make_counter {
             && self.get().eq(&rhs.get())
           }
         }
-        
+
         impl Hash for [<$Prefix $Unit:camel >] {
           fn hash<H: Hasher>(&self, state: &mut H) {
             self.ordering.hash(state);

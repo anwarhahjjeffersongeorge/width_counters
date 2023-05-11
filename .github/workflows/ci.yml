@@ -20,7 +20,7 @@ jobs:
         toolchain: ${{ matrix.rust }}
         profile: minimal
         override: true
-    - name: Install cago-make
+    - name: Install cargo-make
       uses: actions-rs/cargo@v1
       with: 
         command: install
@@ -31,3 +31,16 @@ jobs:
       with:
         command: make
         args: ci-flow
+  build-docs-after-ci:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Generate readme
+      uses: actions-rs/cargo@v1
+      with:
+        command: make
+        args: generate-readme
+    - name: Commit readme
+      run: |
+        git config --local user.name "Github Actions[bot]"
+        git config --local user.email "41898282+github-actions[bot]@users.noreply.github.com"
+        git commit README.md -m "Automated readme generation triggered by ${{ github.ref }}" | exit 0
