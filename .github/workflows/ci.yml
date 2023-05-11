@@ -16,17 +16,20 @@ jobs:
     steps:
     - name: Checkout
       uses: actions/checkout@v3
+    
     - name: Install rust 
       uses: actions-rs/toolchain@v1.0.6
       with:
         toolchain: ${{ matrix.rust }}
         profile: minimal
         override: true
+    
     - name: Install cargo-make
       uses: actions-rs/cargo@v1.0.1
       with: 
         command: install
         args: --debug cargo-make
+    
     - name: Run CI
       if: matrix.rust != 'nightly'
       uses: actions-rs/cargo@v1.0.1
@@ -40,25 +43,44 @@ jobs:
     steps:
     - name: Checkout
       uses: actions/checkout@v3
+
     - name: Install rust nightly
       uses: actions-rs/toolchain@v1.0.6
       with:
         toolchain: nightly
         profile: minimal
         override: true
+
     - name: Install cargo-make
       uses: actions-rs/cargo@v1.0.1
       with: 
         command: install
         args: --debug cargo-make
+
     - name: Generate readme
       uses: actions-rs/cargo@v1.0.1
       with:
         command: make
         args: generate-readme
+
     - name: Commit readme
       run: |
         git config --local user.name "Github Actions[bot]"
         git config --local user.email "41898282+github-actions[bot]@users.noreply.github.com"
         git commit README.md -m "Automated readme generation triggered by ${{ github.ref }} at $(date --rfc-3339=seconds)" 
         git push
+  publish-crate:
+    name: Publish crate to crates.io 
+    needs: [ci, build-docs]
+    runs-on: ubuntu-latest
+    steps: 
+    - name: Checkout
+      uses: actions/checkout@v3
+    
+    - name: Cargo publish 
+      uses: actions-rs/cargo@v1.0.1
+      with:
+        command: publish
+        args: --token=$cargo_registry_token #--no-verify
+      env: 
+        cargo_registry_token: ${{ secrets.CARGO_REGISTRY_TOKEN }}
