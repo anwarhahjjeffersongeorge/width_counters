@@ -4,6 +4,7 @@ use core::{
     cmp, fmt,
     hash::{Hash, Hasher},
     i16, i32, i64, i8, isize,
+    ops,
     sync::atomic::*,
     u16, u32, u64, u8, usize,
 };
@@ -79,19 +80,22 @@ use private::*;
 
 /// Implements a counter or multiple counters
 macro_rules! make_counter {
-  (@Counter $Prefix:ident => $Unit:ident | $Atomic:ident ) => {
+  (@Main $Prefix:ident => $Unit:ident | $Atomic:ident ) => {
     paste!{
-      #[doc = r#"A monotonically increasing atomic counter using ["# $Atomic r#"] / ([core::"# $Unit r#"])."#]
+      #[doc = r#"An atomic counter using ["# $Atomic r#"] / ([core::"# $Unit r#"])."#]
       #[doc = ""]
       #[doc = r"### Behavior  "]
       #[doc = "1. The default ordering is [Sequentially Consistent](Ordering::SeqCst).  "]
       #[doc = "2. The ordering used for atomic operations is customizable for operations ending in `with_ordering`.  "]
-      #[doc = "3. The choice of ordering *intentionally* impacts **EVERYTHING** about how this counter works, including de/serialization, incrementing, jumping, equality comparisons, partial ordering comparisons, etc.  "]
+      #[doc = "3. The choice of ordering *intentionally* impacts **ALMOST EVERYTHING** about how this counter works, including de/serialization, incrementing, decrementing, equality comparisons, partial ordering comparisons, etc.  "]
       #[doc = "4. Total (non-partial) ordering comparisons always use the default ordering.  "]
-      #[doc = r"### Other Notes  "]
+      #[doc = "5. Unlike the underlying [" $Atomic "], this will not wrap on overflow.  "]
+      #[doc = r"### Ordering  "]
       #[doc = "- PartialEq is implemented such that counters with differing orderings are never equal.  "]
       #[doc = "- PartialOrd is implemented such that counters with differing [(atomic) orderings](Ordering) produce no [(comparison) ordering](core::cmp::Ordering).  "]
-      #[doc = "- Unlike the underlying [" $Atomic "], this will not wrap on overflow.  "]
+      #[doc = "- **(Saturating) arithmetic operations are implemented such that differing atomic orderings between the operands are ignored!**"]
+      #[doc = r"### Miscellaneous"]
+      #[doc = r"You can use the [to_x](Self::to_x) method to convert to any type that implements From\<" $Unit r"\>"]
       #[derive(Debug)]
       pub struct [<$Prefix $Unit:camel>] {
         /// The underlying counter
@@ -195,7 +199,7 @@ macro_rules! make_counter {
       #[doc = r#"assert!(a < b, "same-cmp::ordering counters must be ordered by when counts");"# ]
       #[doc = r#"assert!(b > a, "same-cmp::ordering counters must be ordered by when counts");"# ]
       #[doc = r#"let m = 20;"# ]
-      #[doc = r#"(0..m).for_each(|_| { a.inc(); b.inc(); });"# ]
+      #[doc = r#"(0..m).for_each(|_| { a.inc_one(); b.inc_one(); });"# ]
       #[doc = r#"assert!(a < b, "cmp::ordering preserved after counting same amount");"# ]
       #[doc = r#"assert!(b > a, "cmp::ordering preserved after counting same amount");"# ]
       impl cmp::PartialOrd for [<$Prefix $Unit:camel >] {
@@ -255,10 +259,10 @@ macro_rules! make_counter {
         #[doc = r#"assert_eq!(a, b, "counters must be equal when counts and orderings are equal");"# ]
         #[doc = r#"assert_eq!(a, b, "counters must be equal when counts and orderings are equal");"# ]
         #[doc = r#"let m = 20;"# ]
-        #[doc = r#"(0..m).for_each(|_| { a.inc(); b.inc(); });"# ]
+        #[doc = r#"(0..m).for_each(|_| { a.inc_one(); b.inc_one(); });"# ]
         #[doc = r#"assert_eq!(a, b, "counters must be equal after counting same amount");"# ]
         #[doc = r#"assert_eq!(a, b, "counters must be equal after counting same amount");"# ]
-        #[doc = r#"a.inc();"# ]
+        #[doc = r#"a.inc_one();"# ]
         #[doc = r#"assert_ne!(a, b, "counters must not be equal after counting different amounts");"# ]
         #[doc = r#"let c = C::new_from_offset_with_ordering(44, Ordering::Relaxed);"# ]
         #[doc = r#"let d = C::new_from_offset_with_ordering(44, Ordering::Release);"# ]
@@ -305,15 +309,17 @@ macro_rules! make_counter {
       }
 
       impl From<&[<$Prefix $Unit:camel>]> for $Unit {
-        fn from(counter: &[<$Prefix $Unit:camel>]) -> Self { counter.inner.load(counter.ordering) }
+        fn from(counter: &[<$Prefix $Unit:camel>]) -> Self { counter.get() }
       }
-
+      
       impl [<$Prefix $Unit:camel>] {
         /// New inner
         #[allow(dead_code)]
         const fn new_inner(u: $Unit) -> $Atomic { $Atomic::new(u) }
         #[doc = "Largest [representable value](" $Unit "::MAX)"]
         pub const MAX: $Unit = $Unit::MAX;
+        #[doc = "Smallest [representable value](" $Unit "::MIN)"]
+        pub const MIN: $Unit = $Unit::MIN;
         /// Default [Atomic ordering](Ordering)
         pub const DEFAULT_ORDERING: Ordering = Ordering::SeqCst;
         /// Instantiate
@@ -342,66 +348,96 @@ macro_rules! make_counter {
         #[doc = "use " $Unit " as U;"]
         #[doc = r#"let c = C::new();"# ]
         #[doc = r#"assert_eq!(c.get(), 0, "get returns initial value");"# ]
-        #[doc = r#"c.inc();"# ]
-        #[doc = r#"c.inc();"# ]
-        #[doc = r#"c.inc();"# ]
+        #[doc = r#"c.inc_one();"# ]
+        #[doc = r#"c.inc_one();"# ]
+        #[doc = r#"c.inc_one();"# ]
         #[doc = r#"assert_eq!(c.get(), 3, "get returns post-increment value");"# ]
         pub fn get(&self) -> $Unit { self.inner.load(self.ordering) }
         /// Get current value with a specific [ordering](Ordering)
         pub fn get_with_ordering(&self, ordering: Ordering) -> $Unit { self.inner.load(ordering) }
-        #[doc = "Increment by one "]
+        #[doc = r#"Convert to type that impls [From] "# $Unit r#"."#]
+        pub fn to_x<X: From<$Unit>> (&self) -> X { X::from(self.get()) } 
+      }
+
+    }
+  };
+  (@Counting $Prefix:ident => $Unit:ident | $Atomic:ident => $counting_desc:literal($pro_op:ident/$anti_op:ident) as $counting_prefix:ident using $counting_op:ident until $test_limit:ident) => {
+    paste!{
+      impl [<$Prefix $Unit:camel>] {
+        #[doc = $counting_desc " by one "]
         #[doc = r"```"]
         #[doc = "use width_counters::{" [<$Prefix $Unit:camel>] " as C };"]
+        #[doc = "use core::ops::*; "]
         #[doc = "use " $Unit " as U;"]
-        #[doc = r#"let c = C::new();"# ]
+        #[doc = r#"let offset = U::MAX/2;"# ]
+        #[doc = r#"let c = C::new_from_offset(offset);"# ]
         #[doc = r#"let m = 20;"# ]
-        #[doc = r#"(0..m).for_each(|_| { c.inc(); });"# ]
-        #[doc = r#"assert_eq!(c.get(), 20, "counter must count number of times given as per sequential ordering");"# ]
-        #[doc = r#"let d = C::new_from_offset(U::MAX);"# ]
-        #[doc = r#"d.inc();"# ]
-        #[doc = r#"d.inc();"# ]
-        #[doc = r#"assert_eq!(d.get(), U::MAX, "counter must stop at maximum");"# ]
-        pub fn inc(&self) { self.jump_with_ordering(1, self.ordering) }
-        /// Increment by one with ordering
-        pub fn inc_with_ordering(&self, ordering: Ordering) { self.jump_with_ordering(1, ordering) }
-        #[doc = "Jump by specified amount"]
+        #[doc = r#"(0..m).for_each(|_| { c."# [<$counting_prefix _one>] r#"(); });"# ]
+        #[doc = r#"assert_eq!(c.get(), (offset)."# $pro_op r#"(20), "counter must "# $counting_desc r#"/"# $pro_op r#" number of times given as per sequential ordering");"# ]
+        #[doc = r#"let d = C::new_from_offset(U::"# $test_limit r#");"# ]
+        #[doc = r#"d."# [<$counting_prefix _one>] r#"();"# ]
+        #[doc = r#"d."# [<$counting_prefix _one>] r#"();"# ]
+        #[doc = r#"assert_eq!(d.get(), U::"# $test_limit r#", "counter must stop at "# $test_limit r#" ");"# ]
+        pub fn [<$counting_prefix _one>](&self) { self.[<$counting_prefix _by_with_ordering>](1, self.ordering) }
+        #[doc = $counting_desc " by one with ordering"]
+        pub fn [<$counting_prefix _one_with_ordering>](&self, ordering: Ordering) { self.[<$counting_prefix _by_with_ordering>](1, ordering) }
+        #[doc = $counting_desc " by specified amount"]
         #[doc = r"```"]
         #[doc = "use width_counters::{" [<$Prefix $Unit:camel>] " as C };"]
+        #[doc = "use core::ops::*; "]
         #[doc = "use " $Unit " as U;"]
-        #[doc = r#"let c = C::default();"# ]
+        #[doc = r#"let offset = U::MAX/2;"# ]
+        #[doc = r#"let c = C::new_from_offset(offset);"# ]
         #[doc = r#"let m = 20;"# ]
-        #[doc = r#"(0..m).for_each(|_| { c.jump(2); });"# ]
-        #[doc = r#"assert_eq!(c.get(), 20*2, "counter must jump by specified amount");"# ]
-        pub fn jump(&self, amount: $Unit) { self.jump_with_ordering(amount, self.ordering); }
-        #[doc = "Jump by specified amount with ordering"]
+        #[doc = r#"(0..m).for_each(|_| { c."# [<$counting_prefix _by>] r#"(2); });"# ]
+        #[doc = r#"assert_eq!((c.get() as i128)."# $anti_op r#"((20*2) as i128), ((offset) as i128), "counter must "# $counting_desc r#" by specified amount");"# ]
+        pub fn [<$counting_prefix _by>](&self, amount: $Unit) { self.[<$counting_prefix _by_with_ordering>](amount, self.ordering); }
+        #[doc = $counting_desc " by specified amount with ordering"]
         #[doc = r"```"]
         #[doc = "use width_counters::{" [<$Prefix $Unit:camel>] " as C };"]
         #[doc = "use " $Unit " as U;"]
-        #[doc = r#"let c = C::new();"# ]
-        #[doc = r#"let m: U = 20;"# ]
-        #[doc = r#"(0..m).for_each(|_| { c.jump(2); });"# ]
-        #[doc = r#"assert_eq!(c.get(), 40, "counter must jump by specified amount");"# ]
-        #[doc = r#"let d = C::new_from_offset(U::MAX - m);"# ]
-        #[doc = r#"d.jump(m/3);"# ]
-        #[doc = r#"d.jump(m/3);"# ]
-        #[doc = r#"d.jump(m/2);"# ]
-        #[doc = r#"assert_eq!(d.get(), U::MAX, "counter must stop at maximum");"# ]
-        pub fn jump_with_ordering(&self, amount: $Unit, ordering: Ordering) {
+        #[doc = "use core::ops::*; "]
+        #[doc = r#"let m = 3"# $Unit r#";"# ]
+        #[doc = r#"let offset = U::MAX/2;"# ]
+        #[doc = r#"let d = C::new_from_offset(U::"# $test_limit r#"."# $anti_op r#"(m * 2));"# ]
+        #[doc = r#"d."# [<$counting_prefix _by>] r#"(m);"# ]
+        #[doc = r#"d."# [<$counting_prefix _by>] r#"(m);"# ]
+        #[doc = r#"d."# [<$counting_prefix _by>] r#"(m);"# ]
+        #[doc = r#"assert_eq!(d.get(), U::"# $test_limit r#", "counter must stop at "# $test_limit r#"");"# ]
+        pub fn [<$counting_prefix _by_with_ordering>](&self, amount: $Unit, ordering: Ordering) {
           let current = self.get_with_ordering(ordering);
-          let remaining = $Unit::MAX - current;
-          if remaining > 0 {
-            if amount < remaining {
-              self.inner.fetch_add(amount, ordering);
-            } else {
-              self.inner.fetch_add(remaining, ordering);
-            }
-          }
+          let _ = self.inner.swap(current.$counting_op(amount), ordering);
         }
       }
     }
   };
+  (@Op $Prefix:ident => $Unit:ident op $Op:ty : $op_fn:ident ) => {
+    paste!{
+      impl $Op for [<$Prefix $Unit:camel>] {
+        type Output = Self; 
+        #[doc = r" - This operation is implemented with saturating arithmetic"]
+        #[doc = r" - **This operation IGNORES dissimilar [atomic orderings](Ordering)!**"]
+        fn $op_fn(self, rhs: Self) -> Self::Output {
+          Self::new_from_offset(self.get().[<saturating_ $op_fn>](rhs.get()))
+        }
+      }
+    }
+  };
+  (@Ops $Prefix:ident => $Unit:ident => [
+    $($Op:ty : $op_fn:ident;)+
+  ] ) => {
+    $(make_counter!{@Op $Prefix => $Unit op $Op : $op_fn})+
+  };
   ($Prefix:ident => [$($Unit:ident | $Atomic:ident, )+]) => {
-    $(make_counter!{@Counter $Prefix => $Unit | $Atomic})+
+    $(make_counter!{@Main $Prefix => $Unit | $Atomic})+
+    $(make_counter!{@Counting $Prefix => $Unit | $Atomic => "Increment"(add/sub) as inc using saturating_add until MAX})+
+    $(make_counter!{@Counting $Prefix => $Unit | $Atomic => "Decrement"(sub/add) as dec using saturating_sub until MIN})+
+    $(make_counter!{@Ops $Prefix => $Unit => [
+      ops::Add : add;
+      ops::Sub : sub;
+      ops::Mul : mul;
+      ops::Div : div;
+    ]})+
   }
 }
 
@@ -420,3 +456,25 @@ make_counter! {Counter => [
   // i128 | AtomicI128,
   isize | AtomicIsize,
 ]}
+
+
+#[cfg(test)]
+mod clarity{
+  use crate::CounterI8;
+
+use super::*;
+  #[test]
+  fn all_behaviours() {
+    // The same as the doc tests but more readable and only for one type
+    let c = CounterI8::new();
+    (0..100).for_each(|_| c.inc_one() );
+    assert_eq!(c.get(), 100);
+    (0..100).for_each(|_| c.dec_one() );
+    assert_eq!(c.get(), 0);
+    (0..100).for_each(|_| c.inc_by(2) );
+    assert_eq!(c.get(), i8::MAX);
+    (0..100).for_each(|_| c.dec_by(5) );
+    assert_eq!(c.get(), i8::MIN);
+    
+  }
+}

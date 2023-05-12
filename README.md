@@ -17,7 +17,7 @@
 ---
 ## Overview
 <!-- cargo-sync-rdme rustdoc [[ -->
-Atomic, monotonically increasing counters of differing integer widths
+Atomic, thread-safe, monotonically increasing counters of differing integer widths
 
 #### Comes with
 
@@ -28,6 +28,7 @@ These counters support
 * Const instantiation with default offset (0) and default atomic ordering ( sequentially consistent ),
 * Const instantiation with custom offset, custom ordering or both, and
 * [PartialEq](https://doc.rust-lang.org/nightly/core/cmp/trait.PartialEq.html), [Eq](https://doc.rust-lang.org/nightly/core/cmp/trait.Eq.html), [Hash](https://doc.rust-lang.org/nightly/core/hash/trait.Hash.html), [PartialOrd](https://doc.rust-lang.org/nightly/core/cmp/trait.PartialOrd.html), [Ord](https://doc.rust-lang.org/nightly/core/cmp/trait.Ord.html), [Clone](https://doc.rust-lang.org/nightly/core/clone/trait.Clone.html), [Debug](https://doc.rust-lang.org/nightly/core/fmt/trait.Debug.html), [Display](https://doc.rust-lang.org/nightly/core/fmt/trait.Display.html)
+* [Send](https://doc.rust-lang.org/nightly/core/marker/trait.Send.html), [Sync](https://doc.rust-lang.org/nightly/core/marker/trait.Sync.html)
 
 #### Optional features
 
