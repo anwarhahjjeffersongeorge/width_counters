@@ -78,6 +78,8 @@ mod private {
 }
 use private::*;
 
+
+
 /// Implements a counter or multiple counters
 macro_rules! make_counter {
   (@Main $Prefix:ident => $Unit:ident | $Atomic:ident ) => {
@@ -274,7 +276,7 @@ macro_rules! make_counter {
           }
         }
 
-        impl Hash for [<$Prefix $Unit:camel >] {
+                impl Hash for [<$Prefix $Unit:camel >] {
           fn hash<H: Hasher>(&self, state: &mut H) {
             self.ordering.hash(state);
             self.get().hash(state);
@@ -355,7 +357,9 @@ macro_rules! make_counter {
         pub fn get(&self) -> $Unit { self.inner.load(self.ordering) }
         /// Get current value with a specific [ordering](Ordering)
         pub fn get_with_ordering(&self, ordering: Ordering) -> $Unit { self.inner.load(ordering) }
-        #[doc = r#"Convert to type that impls [From] "# $Unit r#"."#]
+        /// Convenience method for getting the current value as i128 
+        pub fn get_i128(&self) -> i128 { self.get() as i128 }  
+        #[doc = r#"Convert to some type that impls [From] "# $Unit r#"."#]
         pub fn to_x<X: From<$Unit>> (&self) -> X { X::from(self.get()) } 
       }
 
