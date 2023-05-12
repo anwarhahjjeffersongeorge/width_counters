@@ -28,7 +28,7 @@ jobs:
       uses: actions-rs/cargo@v1.0.1
       with: 
         command: install
-        args: --rs.github.io-debug cargo-make
+        args: --debug cargo-make
     
     - name: Run CI
       if: matrix.rust != 'nightly'
