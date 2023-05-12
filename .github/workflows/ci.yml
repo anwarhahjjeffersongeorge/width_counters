@@ -78,7 +78,7 @@ jobs:
       id: openpr
       uses: peter-evans/create-pull-request@v5
       with:
-        branch: 'staging/generate_readme'
+        branch: 'staging'
         token: ${{ secrets.PAT }}
         
     - name: Enable PR automerge
