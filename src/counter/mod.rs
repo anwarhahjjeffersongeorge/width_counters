@@ -402,7 +402,6 @@ macro_rules! make_counter {
         #[doc = "use " $Unit " as U;"]
         #[doc = "use core::ops::*; "]
         #[doc = r#"let m = 3"# $Unit r#";"# ]
-        #[doc = r#"let offset = U::MAX/2;"# ]
         #[doc = r#"let d = C::new_from_offset(U::"# $test_limit r#"."# $anti_op r#"(m * 2));"# ]
         #[doc = r#"d."# [<$counting_prefix _by>] r#"(m);"# ]
         #[doc = r#"d."# [<$counting_prefix _by>] r#"(m);"# ]
@@ -412,6 +411,23 @@ macro_rules! make_counter {
           let current = self.get_with_ordering(ordering);
           let _ = self.inner.swap(current.$counting_op(amount), ordering);
         }
+        #[doc = "Can the counter " $counting_desc "any further?"]
+        #[doc = ""]
+        #[doc = "- It halts " $counting_desc:lower "ing at Self::"$test_limit ]
+        #[doc = ""]
+        #[doc = r"```"]
+        #[doc = "use width_counters::{" [<$Prefix $Unit:camel>] " as C };"]
+        #[doc = "use " $Unit " as U;"]
+        #[doc = "use core::ops::*; "]
+        #[doc = r#"let m = 3"# $Unit r#";"# ]
+        #[doc = r#"let offset = C::MAX/2;"# ]
+        #[doc = r#"let d = C::new_from_offset(offset);"# ]
+        #[doc = r#"assert_eq!(d."# [< can_ $counting_prefix >] r#"(), true, "counter must detect when it can "# $counting_desc r#"");"# ]
+        #[doc = r#"let offset = C::"# $test_limit r#";"# ]
+        #[doc = r#"let d = C::new_from_offset(offset);"# ]
+        #[doc = r#"assert_eq!(d."# [< can_ $counting_prefix >] r#"(), false, "counter must detect when it can no longer "# $counting_desc r#"");"# ]
+        pub fn [< can_ $counting_prefix >](&self) -> bool { self.get() != Self::$test_limit }
+
       }
     }
   };
