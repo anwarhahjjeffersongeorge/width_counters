@@ -95,7 +95,7 @@ jobs:
 
     - name: Push generated readme to main
       run: | 
-        git push main staging
+        git push main readme-generation
 
   publish-crate:
     name: Publish crate to crates.io 
