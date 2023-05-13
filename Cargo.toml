@@ -2,7 +2,7 @@
 name = "width_counters"
 authors = ["Anwar Hahj Jefferson-George <anwarhahjjeffersongeorge@gmail.com>"]
 license = "MIT OR Apache-2.0"
-version = "1.0.3"
+version = "1.0.4"
 edition = "2021"
 readme = "README.md"
 repository = "https://github.com/anwarhahjjeffersongeorge/width_counters"

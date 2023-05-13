@@ -1,6 +1,7 @@
 name: CI
 env:
   README_GENERATION_BRANCH: readme-generation
+  README_GENERATION_PR_TITLE: readme-generation auto pr
   CLICOLOR_FORCE: 1
 on: 
   push:
@@ -12,7 +13,7 @@ permissions:
   pull-requests: write
 jobs: 
   ci:
-    if: ${{ github.actor }} != "Github Actions[bot]"
+    if: ${{ github.actor }} != "Github Actions[bot]" && ${{ github.event.pull_request.title}} != ${{ vars.README_GENERATION_PR_TITLE }}
     name: CI
     runs-on: ${{ matrix.os }}
     strategy: 
@@ -84,6 +85,7 @@ jobs:
         base: 'main'
         branch: ${{ env.README_GENERATION_BRANCH  }}
         token: ${{ secrets.PAT }}
+        title: ${{ env.README_GENERATION_PR_TITLE }}
         
     - name: Enable PR automerge
       if: steps.openpr.outputs.pull-request-operation == 'created'
