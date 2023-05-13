@@ -37,6 +37,7 @@ jobs:
       with:
         command: make
         args: ci-flow
+        
   build-docs:
     name: Build documentation
     needs: ci
@@ -96,7 +97,8 @@ jobs:
 
     - name: Push generated readme to main
       run: | 
-        git push staging main
+        git push main staging
+
   publish-crate:
     name: Publish crate to crates.io 
     needs: [ci, build-docs]
