@@ -37,7 +37,7 @@ jobs:
       with:
         command: make
         args: ci-flow
-        
+
   build-docs:
     name: Build documentation
     needs: ci
@@ -45,8 +45,6 @@ jobs:
     steps:
     - name: Checkout
       uses: actions/checkout@v3
-      with:
-        ref: staging
 
     - name: Install rust nightly
       uses: actions-rs/toolchain@v1.0.6
