@@ -383,8 +383,10 @@ macro_rules! make_counter {
         #[doc = r#"d."# [<$counting_prefix _one>] r#"();"# ]
         #[doc = r#"assert_eq!(d.get(), U::"# $test_limit r#", "counter must stop at "# $test_limit r#" ");"# ]
         pub fn [<$counting_prefix _one>](&self) { self.[<$counting_prefix _by_with_ordering>](1, self.ordering) }
+     
         #[doc = $counting_desc " by one with ordering"]
         pub fn [<$counting_prefix _one_with_ordering>](&self, ordering: Ordering) { self.[<$counting_prefix _by_with_ordering>](1, ordering) }
+    
         #[doc = $counting_desc " by specified amount"]
         #[doc = r"```"]
         #[doc = "use width_counters::{" [<$Prefix $Unit:camel>] " as C };"]
@@ -396,6 +398,7 @@ macro_rules! make_counter {
         #[doc = r#"(0..m).for_each(|_| { c."# [<$counting_prefix _by>] r#"(2); });"# ]
         #[doc = r#"assert_eq!((c.get() as i128)."# $anti_op r#"((20*2) as i128), ((offset) as i128), "counter must "# $counting_desc r#" by specified amount");"# ]
         pub fn [<$counting_prefix _by>](&self, amount: $Unit) { self.[<$counting_prefix _by_with_ordering>](amount, self.ordering); }
+     
         #[doc = $counting_desc " by specified amount with ordering"]
         #[doc = r"```"]
         #[doc = "use width_counters::{" [<$Prefix $Unit:camel>] " as C };"]
@@ -411,6 +414,7 @@ macro_rules! make_counter {
           let current = self.get_with_ordering(ordering);
           let _ = self.inner.swap(current.$counting_op(amount), ordering);
         }
+      
         #[doc = "Can the counter " $counting_desc "any further?"]
         #[doc = ""]
         #[doc = "- It halts " $counting_desc:lower "ing at Self::"$test_limit ]
@@ -427,7 +431,29 @@ macro_rules! make_counter {
         #[doc = r#"let d = C::new_from_offset(offset);"# ]
         #[doc = r#"assert_eq!(d."# [< can_ $counting_prefix >] r#"(), false, "counter must detect when it can no longer "# $counting_desc r#"");"# ]
         pub fn [< can_ $counting_prefix >](&self) -> bool { self.get() != Self::$test_limit }
-
+        
+        #[doc = "Combine the " $counting_desc:lower " (by one) and get operations" ]
+        #[doc = ""]
+        #[doc = "Returns the value **before** the " $counting_desc:lower "operation"]
+        pub fn [<get_and_ $counting_prefix _one>](&self,) -> $Unit {
+          self.[<get_and_ $counting_prefix _by>](1)
+        }
+        
+        #[doc = "Combine the " $counting_desc:lower " (by the given amount) and get operations" ]
+        #[doc = ""]
+        #[doc = "Returns the value **before** the " $counting_desc:lower "operation"]
+        pub fn [<get_and_ $counting_prefix _by>](&self, amount: $Unit) -> $Unit {
+          self.[<get_and_ $counting_prefix _by_with_ordering>](amount, self.ordering)
+        }
+        
+        #[doc = "Combine the " $counting_desc:lower " (by the given amount) and get operations" ]
+        #[doc = ""]
+        #[doc = "Returns the value **before** the " $counting_desc:lower "operation"]
+        pub fn [<get_and_ $counting_prefix _by_with_ordering>](&self, amount: $Unit, ordering: Ordering) -> $Unit {
+          let u = self.get();
+          self.[<$counting_prefix _by_with_ordering>](amount, ordering);
+          u
+        }
       }
     }
   };
@@ -494,7 +520,14 @@ use super::*;
     (0..100).for_each(|_| c.inc_by(2) );
     assert_eq!(c.get(), i8::MAX);
     (0..100).for_each(|_| c.dec_by(5) );
-    assert_eq!(c.get(), i8::MIN);
-    
+    assert_eq!(c.get(), i8::MIN); 
+  }
+
+  #[test]
+  fn combined_behaviours() {
+    let c = CounterI32::new_from_offset(33);
+    assert_eq!(c.get_and_dec_by(34), 33, "get_and...method must return starting value");
+    assert_eq!(c.get(), -1, "counter must be set to new value following get_and... method")
+
   }
 }
