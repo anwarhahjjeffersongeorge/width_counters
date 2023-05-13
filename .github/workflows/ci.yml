@@ -13,7 +13,7 @@ permissions:
 
 jobs: 
   ci:
-    if: ${{ github.event.pull_request.title != vars.README_GENERATION_PR_TITLE &&  github.event.pusher.name != 'Github Actions[bot]' }}
+    if: ${{ github.event.pull_request.title }} != vars.README_GENERATION_PR_TITLE &&  ${{ github.event.pusher.name }} != 'Github Actions[bot]'
     name: CI
     runs-on: ${{ matrix.os }}
     strategy: 
@@ -110,7 +110,7 @@ jobs:
   publish-crate:
     name: Publish crate to crates.io 
     needs: [ci, build-docs]
-    if: ${{ github.event.pull_request.title == vars.README_GENERATION_PR_TITLE }}
+    if: ${{ github.event.pull_request.title }} == vars.README_GENERATION_PR_TITLE 
     runs-on: ubuntu-latest
     environment: deployment
     steps: 
