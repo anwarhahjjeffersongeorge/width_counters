@@ -1,12 +1,20 @@
 name: CI
-on: [push, pull_request]
+env:
+  README_GENERATION_BRANCH: readme-generation
+  CLICOLOR_FORCE: 1
+on: 
+  push:
+    branches: [ main ]
+    branches-ignore: [ $README_GENERATION_BRANCH ]
+  pull_request:
+    branches: [ main ]
+    branches-ignore: [ $README_GENERATION_BRANCH ]
 permissions:
   contents: write
   pull-requests: write
-env:
-  CLICOLOR_FORCE: 1
 jobs: 
   ci:
+    if: ${{ github.actor }} != "Github Actions[bot]"
     name: CI
     runs-on: ${{ matrix.os }}
     strategy: 
@@ -76,7 +84,7 @@ jobs:
       uses: peter-evans/create-pull-request@v5
       with:
         base: 'main'
-        branch: 'readme-generation'
+        branch: ${{ env.README_GENERATION_BRANCH  }}
         token: ${{ secrets.PAT }}
         
     - name: Enable PR automerge
@@ -85,7 +93,7 @@ jobs:
       with: 
         pull-request-number: ${{ steps.openpr.outputs.pull-request-number }}
         merge-method: squash
-        token: ${{ secrets.PAT }}
+        token: ${{ secrets.GITHUB_TOKEN }} # use the githubtoken to avoid creating a recursive job
     
     - name: Auto approve PR
       if: steps.openpr.outcome.pull-request-operation == 'created'
@@ -95,7 +103,9 @@ jobs:
 
     - name: Push generated readme to main
       run: | 
-        git push main readme-generation
+        git config --local user.name "Github Actions[bot]"
+        git config --local user.email "41898282+github-actions[bot]@users.noreply.github.com"
+        git push 
 
   publish-crate:
     name: Publish crate to crates.io 
