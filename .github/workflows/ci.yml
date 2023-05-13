@@ -67,7 +67,6 @@ jobs:
 
     - name: Commit changes readme
       run: |
-        git pull main -f
         git config --local user.name "Github Actions[bot]"
         git config --local user.email "41898282+github-actions[bot]@users.noreply.github.com"
         git commit README.md --allow-empty -m "Automated readme generation triggered by ${{ github.ref }} at $(date --rfc-3339=seconds)"  
