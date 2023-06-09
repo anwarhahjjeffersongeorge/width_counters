@@ -11,6 +11,8 @@ use core::{
 use paste::paste;
 #[cfg(feature = "serde")]
 use serde::{ser::SerializeStruct, Deserialize, Serialize};
+use strum::{EnumCount, IntoEnumIterator};
+use enumflags2::{bitflags, BitFlags, _internal::RawBitFlags};
 
 mod private {
     use super::*;
@@ -78,6 +80,92 @@ mod private {
 }
 use private::*;
 
+#[bitflags(default = Nonmonotonic | Increment | Acyclic)]
+#[repr(u8)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[cfg_attr(feature = "serde", derive(Deserialize, Serialize))]
+pub enum CountingBehavior {
+  /// Non monotonic (default)
+  Nonmonotonic = 1 << 0,
+  /// In monotonic mode, values of the counter have consistent 
+  /// such the differences between any two values (taken in 
+  /// the order they were produced) will not change sign 
+  Monotonic = 1 << 1,
+  /// Increases unless order is specified (default)
+  Increment = 1 << 2, 
+  /// Decreases unless order is specified
+  Decrement = 1 << 3,
+  /// Stops at overflow limit (default) 
+  Acyclic = 1 << 4,
+  /// Wraps around on overflow
+  Cyclic = 1 << 5,
+}
+impl CountingBehavior {
+  /// Do these counting behaviors conflict?
+  pub fn conflicts(&self, rhs: &Self) -> CountingBehaviorConflict {
+    match (self, rhs) {
+      (Self::Increment, Self::Decrement) 
+      | (Self::Decrement, Self::Increment) => CountingBehaviorConflict::Always,
+      (Self::Monotonic, Self::Nonmonotonic) 
+      | (Self::Nonmonotonic, Self::Monotonic) => CountingBehaviorConflict::Always,
+      (Self::Cyclic, Self::Acyclic) 
+      | (Self::Acyclic, Self::Cyclic) => CountingBehaviorConflict::Overflowing,
+      _ => CountingBehaviorConflict::None
+    }
+  }
+}
+impl HasCountingBehavior for BitFlags<CountingBehavior> {
+  fn get_behavior_ref(&self) -> &BitFlags<CountingBehavior> { self }
+}
+
+#[derive(
+  Copy, Clone, Debug, PartialEq, 
+  Eq, PartialOrd, Ord, Hash, 
+  strum::EnumCount, strum::EnumIter
+)]
+#[cfg_attr(feature = "serde", derive(Deserialize, Serialize))]
+/// A conflict between counting behaviors
+pub enum CountingBehaviorConflict {
+  /// No conflict
+  None, 
+  /// Conflict for any operation
+  Always,
+  /// Conflict only at overflow operations
+  Overflowing,
+}
+impl CountingBehaviorConflict {
+  const CONFLICTING_VARIANTS: usize = Self::COUNT - 1;
+}
+pub type AllCountingBehaviorConflicts = [
+  CountingBehaviorConflict; 
+  CountingBehaviorConflict::CONFLICTING_VARIANTS
+];
+
+/// Something that has counting behaviors 
+pub trait HasCountingBehavior{
+  fn get_behavior_ref(&self) -> &BitFlags<CountingBehavior>;
+  fn get_behavior_conflicts(&self) -> AllCountingBehaviorConflicts {
+    let mut r = [
+      CountingBehaviorConflict::None; 
+      CountingBehaviorConflict::CONFLICTING_VARIANTS
+    ];
+    let ii = self.get_behavior_ref().iter();
+    let jj = ii.clone();
+    CountingBehaviorConflict::iter()
+    .filter(|counting_behavior_conflict| counting_behavior_conflict.ne(&CountingBehaviorConflict::None))
+      .enumerate()
+      .for_each(|(x, counting_behavior_conflict)| {
+        if ii.clone().any(|i| {
+          jj.clone().any(|j| {
+            i.conflicts(&j).eq(&counting_behavior_conflict)
+          })
+        }) {
+          r[x] = counting_behavior_conflict;
+        }
+      });
+    r
+  }
+}
 
 
 /// Implements a counter or multiple counters
@@ -91,7 +179,8 @@ macro_rules! make_counter {
       #[doc = "2. The ordering used for atomic operations is customizable for operations ending in `with_ordering`.  "]
       #[doc = "3. The choice of ordering *intentionally* impacts **ALMOST EVERYTHING** about how this counter works, including de/serialization, incrementing, decrementing, equality comparisons, partial ordering comparisons, etc.  "]
       #[doc = "4. Total (non-partial) ordering comparisons always use the default ordering.  "]
-      #[doc = "5. Unlike the underlying [" $Atomic "], this will not wrap on overflow.  "]
+      #[doc = "5. Unlike the underlying [" $Atomic "], this will not wrap on overflow unless the cyclic behavior mode is set. "]
+      #[doc = "6. The default behavior is non-monotonic, so the counter can increment and decrement. "]
       #[doc = r"### Ordering  "]
       #[doc = "- PartialEq is implemented such that counters with differing orderings are never equal.  "]
       #[doc = "- PartialOrd is implemented such that counters with differing [(atomic) orderings](Ordering) produce no [(comparison) ordering](core::cmp::Ordering).  "]
@@ -104,6 +193,10 @@ macro_rules! make_counter {
         inner: $Atomic,
         /// The ordering used for all operations
         ordering: Ordering,
+        /// A bitmask of counting modes
+        counting_behavior: BitFlags<CountingBehavior>,
+        /// Conflicts 
+        conflicts: AllCountingBehaviorConflicts,
       }
 
       #[cfg(feature = "serde")]
@@ -119,6 +212,7 @@ macro_rules! make_counter {
             let mut counter = serializer.serialize_struct( name_str, 2 )?;
             counter.serialize_field("ordering", &O::from(self.ordering))?;
             counter.serialize_field("inner", &self.get())?;
+            counter.serialize_field("counting_behavior", &self.counting_behavior)?;
             counter.end()
           }
         }
@@ -132,7 +226,7 @@ macro_rules! make_counter {
 
             #[derive(Deserialize)]
             #[serde(field_identifier, rename_all = "lowercase")]
-            enum Field { Inner, Ordering }
+            enum Field { Inner, Ordering, CountingBehavior }
 
             struct [<$Prefix $Unit:camel Visitor>];
             impl<'de> serde::de::Visitor<'de> for [<$Prefix $Unit:camel Visitor>] {
@@ -148,6 +242,7 @@ macro_rules! make_counter {
               {
                 let mut inner = None;
                 let mut ordering = None;
+                let mut counting_behavior = None;
                 while let Some(key) = map.next_key()? {
                   match key {
                     Field::Inner => {
@@ -164,11 +259,26 @@ macro_rules! make_counter {
                       let val: O = map.next_value()?;
                       ordering = Some(val.into())
                     },
+                    Field::CountingBehavior => {
+                      if counting_behavior.is_some() {
+                        return Err(serde::de::Error::duplicate_field("counting_behavior"));
+                      }
+                      let val: BitFlags<CountingBehavior> = map.next_value()?;
+                      counting_behavior = Some(val.into())
+                    },
                   }
                 }
                 let ordering = ordering.ok_or_else(|| serde::de::Error::missing_field("ordering"))?;
                 let inner = inner.ok_or_else(|| serde::de::Error::missing_field("inner"))?;
-                Ok([<$Prefix $Unit:camel >]{ordering, inner})
+                let counting_behavior: BitFlags<CountingBehavior> = counting_behavior
+                  .ok_or_else(|| serde::de::Error::missing_field("inner"))?;
+                let conflicts = counting_behavior.get_behavior_conflicts();
+                Ok([<$Prefix $Unit:camel >]{
+                  ordering, 
+                  inner, 
+                  counting_behavior,
+                  conflicts
+                })
               }
             }
             const FIELDS: &'static [&'static str] = &["ordering", "inner"];
@@ -252,7 +362,7 @@ macro_rules! make_counter {
       mod [<eq_partial_eq_hash_ $Prefix $Unit:camel >] {
         use super::*;
         impl Eq for [<$Prefix $Unit:camel>] {}
-        #[doc = "PartialEq is only equal when orderings are equal"]
+        #[doc = "PartialEq is only equal when orderings and counting behaviors are equal"]
         #[doc = r"```"]
         #[doc = "use width_counters::{" [<$Prefix $Unit:camel>] " as C };"]
         #[doc = "use core::sync::atomic::Ordering;"]
@@ -272,13 +382,15 @@ macro_rules! make_counter {
         impl PartialEq for [<$Prefix $Unit:camel>] {
           fn eq(&self, rhs: &Self) -> bool {
             self.ordering.eq(&rhs.ordering)
+            && self.counting_behavior.eq(&rhs.counting_behavior)
             && self.get().eq(&rhs.get())
           }
         }
 
-                impl Hash for [<$Prefix $Unit:camel >] {
+        impl Hash for [<$Prefix $Unit:camel >] {
           fn hash<H: Hasher>(&self, state: &mut H) {
             self.ordering.hash(state);
+            self.counting_behavior.hash(state);
             self.get().hash(state);
           }
         }
@@ -307,43 +419,112 @@ macro_rules! make_counter {
       }
 
       impl From<$Unit> for [<$Prefix $Unit:camel>] {
-        fn from(x: $Unit) -> Self { Self{ inner: $Atomic::new(x), ordering: Self::DEFAULT_ORDERING }  }
+        fn from(x: $Unit) -> Self {
+          let counting_behavior = Self::DEFAULT_COUNTING_BEHAVIOR;
+          let conflicts = counting_behavior.get_behavior_conflicts(); 
+          Self{ 
+            inner: $Atomic::new(x), 
+            ordering: Self::DEFAULT_ORDERING,
+            counting_behavior,
+            conflicts 
+          }  
+        }
       }
 
       impl From<&[<$Prefix $Unit:camel>]> for $Unit {
         fn from(counter: &[<$Prefix $Unit:camel>]) -> Self { counter.get() }
       }
       
+      impl HasCountingBehavior for [<$Prefix $Unit:camel>] {
+        fn get_behavior_ref(&self) -> &BitFlags<CountingBehavior> { &self.counting_behavior }
+        fn get_behavior_conflicts(&self) -> AllCountingBehaviorConflicts { self.conflicts }
+      }
+
       impl [<$Prefix $Unit:camel>] {
-        /// New inner
-        #[allow(dead_code)]
-        const fn new_inner(u: $Unit) -> $Atomic { $Atomic::new(u) }
         #[doc = "Largest [representable value](" $Unit "::MAX)"]
         pub const MAX: $Unit = $Unit::MAX;
         #[doc = "Smallest [representable value](" $Unit "::MIN)"]
         pub const MIN: $Unit = $Unit::MIN;
         /// Default [Atomic ordering](Ordering)
         pub const DEFAULT_ORDERING: Ordering = Ordering::SeqCst;
+        /// Default [counting behavior](CountingBehavior) 
+        pub const DEFAULT_COUNTING_BEHAVIOR: BitFlags<CountingBehavior> = BitFlags::<CountingBehavior>::from_bits_truncate_c(
+          CountingBehavior::DEFAULT,
+          BitFlags::CONST_TOKEN
+        );
         /// Instantiate
-        pub const fn new() -> Self { Self { inner: $Atomic::new(0), ordering: Self::DEFAULT_ORDERING }}
+        pub fn new() -> Self { 
+          let counting_behavior = Self::DEFAULT_COUNTING_BEHAVIOR;
+          let conflicts = counting_behavior.get_behavior_conflicts();
+          Self { 
+            inner: $Atomic::new(0), 
+            ordering: Self::DEFAULT_ORDERING,
+            counting_behavior,
+            conflicts
+          }
+        }
         /// Instantiate with ordering
-        pub const fn new_with_ordering(ordering: Ordering) -> Self {
+        pub fn new_with_ordering(ordering: Ordering) -> Self {
           let mut s = Self::new();
           s.ordering = ordering;
           s
         }
         /// Instantiate with offset value
-        pub const fn new_from_offset(offset: $Unit) -> Self {
+        pub fn new_from_offset(offset: $Unit) -> Self {
           let mut s = Self::new();
           s.inner = $Atomic::new(offset);
           s
         }
         /// Instantiate with offset value and ordering
-        pub const fn new_from_offset_with_ordering(offset: $Unit, ordering: Ordering) -> Self {
+        pub fn new_from_offset_with_ordering(offset: $Unit, ordering: Ordering) -> Self {
           let mut s = Self::new_from_offset(offset);
           s.ordering = ordering;
           s
         }
+        /// Set counting behavior 
+        pub fn set_counting_behavior<B: Into<BitFlags<CountingBehavior>>>(
+          &mut self, 
+          counting_behavior: B
+        ) {
+          self.counting_behavior = counting_behavior.into();
+          self.conflicts = self.counting_behavior.get_behavior_conflicts();
+        }
+        /// Instantiate with counting behaviors 
+        pub fn new_with_counting_behavior<B: Into<BitFlags<CountingBehavior>>>(
+          counting_behavior: B
+        ) -> Self {
+          let mut s = Self::new();
+          s.set_counting_behavior(counting_behavior);
+          s
+        } 
+        /// Instantiate with offset value and counting behavior
+        pub fn new_from_offset_with_counting_behavior<B: Into<BitFlags<CountingBehavior>>>(
+          offset: $Unit, 
+          counting_behavior: B
+        ) -> Self {
+          let mut s = Self::new_from_offset(offset);
+          s.set_counting_behavior(counting_behavior);
+          s
+        }
+
+
+        /// Advance (by one) according to the current counting behavior
+        ///
+        /// - Returns the new value if applicable
+        /// - Returns none if the counting behaviors [conflict](CountingBehavior::conflicts)
+        /// - Returns none if no new value would be produced under current behavior   
+        pub fn try_next(&self) -> Option<$Unit> {
+          let current: $Unit = self.get();
+          let new = if self.counting_behavior.contains(CountingBehavior::Increment) {
+            self.inc_one();
+            self.get()
+          } else {
+            self.dec_one();
+            self.get()
+          };
+          (new != current).then(|| new)
+        } 
+
         #[doc = "Get current value with the default [ordering](Ordering)"]
         #[doc = r"```"]
         #[doc = "use width_counters::{" [<$Prefix $Unit:camel>] " as C };"]
@@ -365,29 +546,35 @@ macro_rules! make_counter {
 
     }
   };
-  (@Counting $Prefix:ident => $Unit:ident | $Atomic:ident => $counting_desc:literal($pro_op:ident/$anti_op:ident) as $counting_prefix:ident using $counting_op:ident until $test_limit:ident) => {
+  (@Counting $Prefix:ident => 
+    $Unit:ident | $Atomic:ident => 
+    $CountingDesc:ident ($pro_op:ident/$anti_op:ident) 
+    as $counting_prefix:ident using $counting_op:ident until $test_limit:ident
+    or $cyclic_counting_op:ident
+  ) => {
     paste!{
       impl [<$Prefix $Unit:camel>] {
-        #[doc = $counting_desc " by one "]
+        #[doc = $CountingDesc " by one "]
         #[doc = r"```"]
         #[doc = "use width_counters::{" [<$Prefix $Unit:camel>] " as C };"]
         #[doc = "use core::ops::*; "]
+        #[doc = "use enumflags2::{make_bitflags};"]
         #[doc = "use " $Unit " as U;"]
         #[doc = r#"let offset = U::MAX/2;"# ]
         #[doc = r#"let c = C::new_from_offset(offset);"# ]
         #[doc = r#"let m = 20;"# ]
         #[doc = r#"(0..m).for_each(|_| { c."# [<$counting_prefix _one>] r#"(); });"# ]
-        #[doc = r#"assert_eq!(c.get(), (offset)."# $pro_op r#"(20), "counter must "# $counting_desc r#"/"# $pro_op r#" number of times given as per sequential ordering");"# ]
+        #[doc = r#"assert_eq!(c.get(), (offset)."# $pro_op r#"(20), "counter must "# $CountingDesc r#"/"# $pro_op r#" number of times given as per sequential ordering");"# ]
         #[doc = r#"let d = C::new_from_offset(U::"# $test_limit r#");"# ]
         #[doc = r#"d."# [<$counting_prefix _one>] r#"();"# ]
         #[doc = r#"d."# [<$counting_prefix _one>] r#"();"# ]
         #[doc = r#"assert_eq!(d.get(), U::"# $test_limit r#", "counter must stop at "# $test_limit r#" ");"# ]
         pub fn [<$counting_prefix _one>](&self) { self.[<$counting_prefix _by_with_ordering>](1, self.ordering) }
      
-        #[doc = $counting_desc " by one with ordering"]
+        #[doc = $CountingDesc " by one with ordering"]
         pub fn [<$counting_prefix _one_with_ordering>](&self, ordering: Ordering) { self.[<$counting_prefix _by_with_ordering>](1, ordering) }
     
-        #[doc = $counting_desc " by specified amount"]
+        #[doc = $CountingDesc " by specified amount"]
         #[doc = r"```"]
         #[doc = "use width_counters::{" [<$Prefix $Unit:camel>] " as C };"]
         #[doc = "use core::ops::*; "]
@@ -396,10 +583,10 @@ macro_rules! make_counter {
         #[doc = r#"let c = C::new_from_offset(offset);"# ]
         #[doc = r#"let m = 20;"# ]
         #[doc = r#"(0..m).for_each(|_| { c."# [<$counting_prefix _by>] r#"(2); });"# ]
-        #[doc = r#"assert_eq!((c.get() as i128)."# $anti_op r#"((20*2) as i128), ((offset) as i128), "counter must "# $counting_desc r#" by specified amount");"# ]
+        #[doc = r#"assert_eq!((c.get() as i128)."# $anti_op r#"((20*2) as i128), ((offset) as i128), "counter must "# $CountingDesc r#" by specified amount");"# ]
         pub fn [<$counting_prefix _by>](&self, amount: $Unit) { self.[<$counting_prefix _by_with_ordering>](amount, self.ordering); }
      
-        #[doc = $counting_desc " by specified amount with ordering"]
+        #[doc = $CountingDesc " by specified amount with ordering"]
         #[doc = r"```"]
         #[doc = "use width_counters::{" [<$Prefix $Unit:camel>] " as C };"]
         #[doc = "use " $Unit " as U;"]
@@ -411,44 +598,72 @@ macro_rules! make_counter {
         #[doc = r#"d."# [<$counting_prefix _by>] r#"(m);"# ]
         #[doc = r#"assert_eq!(d.get(), U::"# $test_limit r#", "counter must stop at "# $test_limit r#"");"# ]
         pub fn [<$counting_prefix _by_with_ordering>](&self, amount: $Unit, ordering: Ordering) {
-          let current = self.get_with_ordering(ordering);
-          let _ = self.inner.swap(current.$counting_op(amount), ordering);
+          if self.[<is $counting_prefix _rementable>]() {
+            let current = self.get_with_ordering(ordering);
+            if self.counting_behavior.contains(CountingBehavior::Cyclic) {
+              let _ = self.inner.swap(current.$cyclic_counting_op(amount), ordering);
+            } else {
+              let _ = self.inner.swap(current.$counting_op(amount), ordering);
+            }
+          }
         }
       
-        #[doc = "Can the counter " $counting_desc "any further?"]
+        #[doc = "Can the counter " $CountingDesc:lower " any further?"]
         #[doc = ""]
-        #[doc = "- It halts " $counting_desc:lower "ing at Self::"$test_limit ]
+        #[doc = "- It halts " $CountingDesc:lower " ing at Self::"$test_limit ]
         #[doc = ""]
         #[doc = r"```"]
-        #[doc = "use width_counters::{" [<$Prefix $Unit:camel>] " as C };"]
+        #[doc = "use width_counters::{" [<$Prefix $Unit:camel>] " as C, CountingBehavior as B };"]
         #[doc = "use " $Unit " as U;"]
         #[doc = "use core::ops::*; "]
         #[doc = r#"let m = 3"# $Unit r#";"# ]
         #[doc = r#"let offset = C::MAX/2;"# ]
-        #[doc = r#"let d = C::new_from_offset(offset);"# ]
-        #[doc = r#"assert_eq!(d."# [< can_ $counting_prefix >] r#"(), true, "counter must detect when it can "# $counting_desc r#"");"# ]
+        #[doc = r#"let d = C::new_from_offset_with_counting_behavior(offset, B::"# $CountingDesc r#");"# ]
+        #[doc = r#"assert_eq!(d."# [< can_ $counting_prefix >] r#"(), true, "counter must detect when it can "# $CountingDesc r#"");"# ]
         #[doc = r#"let offset = C::"# $test_limit r#";"# ]
-        #[doc = r#"let d = C::new_from_offset(offset);"# ]
-        #[doc = r#"assert_eq!(d."# [< can_ $counting_prefix >] r#"(), false, "counter must detect when it can no longer "# $counting_desc r#"");"# ]
-        pub fn [< can_ $counting_prefix >](&self) -> bool { self.get() != Self::$test_limit }
-        
-        #[doc = "Combine the " $counting_desc:lower " (by one) and get operations" ]
+        #[doc = r#"let d = C::new_from_offset_with_counting_behavior(offset, B::"# $CountingDesc r#");"# ]
+        #[doc = r#"assert_eq!(d."# [< can_ $counting_prefix >] r#"(), false, "counter must detect when it can no longer "# $CountingDesc r#"");"# ]
+        pub fn [< can_ $counting_prefix >](&self) -> bool { 
+          self.[<is $counting_prefix _rementable>]() 
+          && self.[<is_within_ $counting_prefix _bound >]()     
+        }
+
+        #[doc = "Is the current index advanceable with the given operation type"]
+        pub fn [<is $counting_prefix _rementable>](&self) -> bool {
+          !self.counting_behavior.is_empty()
+          && !self.conflicts.contains(&CountingBehaviorConflict::Always) 
+          && ( 
+            self.counting_behavior.contains(CountingBehavior::$CountingDesc)
+            || self.counting_behavior.contains(CountingBehavior::Nonmonotonic)
+          ) 
+        } 
+
+        #[doc = "Is it halted at the " $CountingDesc:lower " bound"]
         #[doc = ""]
-        #[doc = "Returns the value **before** the " $counting_desc:lower "operation"]
+        #[doc = "- **The bound is:** [Self::"$test_limit "]"]
+        #[doc = "- The bound never applies in:** [acyclic mode](CountingBehavior)" ]
+        pub fn [<is_within_ $counting_prefix _bound >](&self) -> bool {
+          self.counting_behavior.contains(CountingBehavior::Acyclic)
+          || self.get() != Self::$test_limit
+        } 
+
+        #[doc = "Combine the " $CountingDesc:lower " (by one) and get operations" ]
+        #[doc = ""]
+        #[doc = "Returns the value **before** the " $CountingDesc:lower " operation"]
         pub fn [<get_and_ $counting_prefix _one>](&self,) -> $Unit {
           self.[<get_and_ $counting_prefix _by>](1)
         }
         
-        #[doc = "Combine the " $counting_desc:lower " (by the given amount) and get operations" ]
+        #[doc = "Combine the " $CountingDesc:lower " (by the given amount) and get operations" ]
         #[doc = ""]
-        #[doc = "Returns the value **before** the " $counting_desc:lower "operation"]
+        #[doc = "Returns the value **before** the " $CountingDesc:lower "operation"]
         pub fn [<get_and_ $counting_prefix _by>](&self, amount: $Unit) -> $Unit {
           self.[<get_and_ $counting_prefix _by_with_ordering>](amount, self.ordering)
         }
         
-        #[doc = "Combine the " $counting_desc:lower " (by the given amount) and get operations" ]
+        #[doc = "Combine the " $CountingDesc:lower " (by the given amount) and get operations" ]
         #[doc = ""]
-        #[doc = "Returns the value **before** the " $counting_desc:lower "operation"]
+        #[doc = "Returns the value **before** the " $CountingDesc:lower " operation"]
         pub fn [<get_and_ $counting_prefix _by_with_ordering>](&self, amount: $Unit, ordering: Ordering) -> $Unit {
           let u = self.get();
           self.[<$counting_prefix _by_with_ordering>](amount, ordering);
@@ -476,8 +691,8 @@ macro_rules! make_counter {
   };
   ($Prefix:ident => [$($Unit:ident | $Atomic:ident, )+]) => {
     $(make_counter!{@Main $Prefix => $Unit | $Atomic})+
-    $(make_counter!{@Counting $Prefix => $Unit | $Atomic => "Increment"(add/sub) as inc using saturating_add until MAX})+
-    $(make_counter!{@Counting $Prefix => $Unit | $Atomic => "Decrement"(sub/add) as dec using saturating_sub until MIN})+
+    $(make_counter!{@Counting $Prefix => $Unit | $Atomic => Increment (add/sub) as inc using saturating_add until MAX or wrapping_add })+
+    $(make_counter!{@Counting $Prefix => $Unit | $Atomic => Decrement (sub/add) as dec using saturating_sub until MIN or wrapping_sub })+
     $(make_counter!{@Ops $Prefix => $Unit => [
       ops::Add : add;
       ops::Sub : sub;
@@ -505,14 +720,14 @@ make_counter! {Counter => [
 
 
 #[cfg(test)]
-mod clarity{
-  use crate::CounterI8;
+mod general{
+  use super::*;
+  use enumflags2::make_bitflags;
 
-use super::*;
   #[test]
-  fn all_behaviours() {
+  fn nonmonotonic() {
     // The same as the doc tests but more readable and only for one type
-    let c = CounterI8::new();
+    let c = CounterI8::new_with_counting_behavior(make_bitflags!(CountingBehavior::{Nonmonotonic}));
     (0..100).for_each(|_| c.inc_one() );
     assert_eq!(c.get(), 100);
     (0..100).for_each(|_| c.dec_one() );
@@ -524,10 +739,61 @@ use super::*;
   }
 
   #[test]
-  fn combined_behaviours() {
-    let c = CounterI32::new_from_offset(33);
+  fn get_and() {
+    let c = CounterI32::new_from_offset_with_counting_behavior(33, make_bitflags!(CountingBehavior::{Decrement}));
     assert_eq!(c.get_and_dec_by(34), 33, "get_and...method must return starting value");
     assert_eq!(c.get(), -1, "counter must be set to new value following get_and... method")
-
   }
+
+  #[test]
+  fn conflicting_behaviors() {
+    let c0 = CounterI16::new_with_counting_behavior(
+      make_bitflags!(CountingBehavior::{Monotonic | Nonmonotonic})
+    );
+    assert!(
+      c0.get_behavior_conflicts().contains(&CountingBehaviorConflict::Always), 
+      "Must detect conflicting monotonic/nonmonotonic counting behaviors"
+    );
+    assert_eq!(c0.try_next(), None, "must not advance with conflicting counting behaviors");
+    let c1 = CounterI16::new_with_counting_behavior(make_bitflags!(CountingBehavior::{Increment | Decrement}));
+    assert!(
+      c1.get_behavior_conflicts().contains(&CountingBehaviorConflict::Always), 
+      "Must detect conflicting counting increment/decrement behaviors"
+    );
+
+    let c2 = CounterI16::new_with_counting_behavior(
+      make_bitflags!(CountingBehavior::{Acyclic | Cyclic})
+    );
+    assert!(
+      c2.get_behavior_conflicts().contains(&CountingBehaviorConflict::Overflowing), 
+      "Must detect conflicting counting acyclic/cyclic behaviors"
+    );
+   
+    let c3 = CounterI16::new_with_counting_behavior(make_bitflags!(CountingBehavior::{Monotonic | Increment}));
+    assert!(
+      !c3.get_behavior_conflicts().contains(&CountingBehaviorConflict::Always), 
+      "Must ignore nonconflicting counting behaviors"
+    );
+  }
+
+
+  #[test]
+  fn cyclic() {
+    // The same as the doc tests but more readable and only for one type
+    let c = CounterU8::new_with_counting_behavior(
+      make_bitflags!(
+        CountingBehavior::{Monotonic | Increment | Cyclic}
+      )
+    );
+    let m = 100u8;
+    (0..m).for_each(|_| c.inc_one() );
+    assert_eq!(c.get(), m, "must increment specified amount");
+    (0..m).for_each(|_| c.dec_one() );
+    assert_eq!(c.get(), m, "must remain monotonic non-decreasing");
+    (0..(u8::MAX-m)).for_each(|_| c.inc_by(1) );
+    assert_eq!(c.get(), u8::MAX, "must increment to maximum");
+    (0..(m+1)).for_each(|_| c.inc_one() );
+    assert_eq!(c.get(), m, "must cycle around"); 
+  }
+
 }
