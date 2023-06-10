@@ -17,16 +17,17 @@
 ---
 ## Overview
 <!-- cargo-sync-rdme rustdoc [[ -->
-Atomic, thread-safe, monotonically increasing counters of differing integer widths
+Atomic, thread-safe counters of differing integer widths
 
 #### Comes with
 
 These counters support
 
-* Incrementing by default (1) or jumping by specified amounts,
+* Incrementing/decrementing by default (1) or specified amounts,
 * Using per-operation [atomic orderings](https://doc.rust-lang.org/nightly/core/sync/atomic/enum.Ordering.html), ([see this also](https://en.cppreference.com/w/c/atomic/memory_order))
-* Const instantiation with default offset (0) and default atomic ordering ( sequentially consistent ),
-* Const instantiation with custom offset, custom ordering or both, and
+* Instantiation with default offset (0) and default atomic ordering ( sequentially consistent ),
+* Instantiation with custom offset, custom ordering or both, 
+* Instantiation with custom enum-flag-based counting behaviors (monotonic, nonmonotonic, incrementing, decrementing, cyclic, acyclic)
 * [PartialEq](https://doc.rust-lang.org/nightly/core/cmp/trait.PartialEq.html), [Eq](https://doc.rust-lang.org/nightly/core/cmp/trait.Eq.html), [Hash](https://doc.rust-lang.org/nightly/core/hash/trait.Hash.html), [PartialOrd](https://doc.rust-lang.org/nightly/core/cmp/trait.PartialOrd.html), [Ord](https://doc.rust-lang.org/nightly/core/cmp/trait.Ord.html), [Clone](https://doc.rust-lang.org/nightly/core/clone/trait.Clone.html), [Debug](https://doc.rust-lang.org/nightly/core/fmt/trait.Debug.html), [Display](https://doc.rust-lang.org/nightly/core/fmt/trait.Display.html)
 * [Send](https://doc.rust-lang.org/nightly/core/marker/trait.Send.html), [Sync](https://doc.rust-lang.org/nightly/core/marker/trait.Sync.html)
 
