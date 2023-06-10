@@ -17,3 +17,9 @@
 
 mod counter;
 pub use counter::*;
+#[cfg(feature = "iterators")]
+mod iterators;
+#[cfg(feature = "iterators")]
+pub use iterators::*;
+
+pub use counter::behavior::*;
