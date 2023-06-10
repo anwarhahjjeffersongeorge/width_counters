@@ -10,7 +10,8 @@
 //! - [PartialEq], [Eq], [Hash](core::hash::Hash), [PartialOrd], [Ord], [Clone], [Debug](core::fmt::Debug), [Display](core::fmt::Display)  
 //! - [Send], [Sync]
 //! ### Optional features
-//! - `serde`: Enable de/serialization
+//! - `serde`: serialization and deserialization support
+//! - `iterators`: iterator support
 
 
 #![no_std]
