@@ -39,6 +39,14 @@ impl CountingBehavior {
       _ => CountingBehaviorConflict::None
     }
   }
+  /// Make behavior 
+  pub fn make_behavior_flags(s: &[Self]) -> BitFlags<CountingBehavior> {
+    let mut b = BitFlags::<CountingBehavior>::empty();
+    s.iter().for_each(|flag| {
+      b.insert(*flag);
+    });
+    b
+  } 
 }
 impl HasCountingBehavior for BitFlags<CountingBehavior> {
   fn get_behavior_ref(&self) -> &BitFlags<CountingBehavior> { self }

@@ -687,7 +687,11 @@ mod general{
   #[test]
   fn conflicting_behaviors() {
     let c0 = CounterI16::new_with_counting_behavior(
-      make_bitflags!(CountingBehavior::{Monotonic | Nonmonotonic})
+      CountingBehavior::make_behavior_flags(&[
+        CountingBehavior::Nonmonotonic,
+        CountingBehavior::Monotonic,
+      ])
+      // make_bitflags!(CountingBehavior::{Monotonic | Nonmonotonic})
     );
     assert!(
       c0.get_behavior_conflicts().contains(&CountingBehaviorConflict::Always), 
