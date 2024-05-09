@@ -33,5 +33,6 @@ These counters support
 
 #### Optional features
 
-* `serde`: Enable de/serialization
+* `serde`: serialization and deserialization support
+* `iterators`: iterator support
 <!-- cargo-sync-rdme ]] -->
