@@ -22,5 +22,3 @@ pub use counter::*;
 mod iterators;
 #[cfg(feature = "iterators")]
 pub use iterators::*;
-
-pub use counter::behavior::*;

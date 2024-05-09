@@ -100,6 +100,14 @@ pub trait HasCountingBehavior{
     r
   }
 }
+impl <H> HasCountingBehavior for &H where H: HasCountingBehavior {
+  fn get_behavior_ref(&self) -> &BitFlags<CountingBehavior> {
+    (**self).get_behavior_ref()
+  }
+  fn get_behavior_conflicts(&self) -> AllCountingBehaviorConflicts {
+    (**self).get_behavior_conflicts()
+  }
+}
 
 /// Something that can counts up or down
 pub trait CountsNonmotonically {
@@ -109,9 +117,9 @@ pub trait CountsNonmotonically {
   fn inc_one(&self);
   /// Is it incrementable based on internal counting behavior settings?
   fn is_incrementable(&self) -> bool;
-  // Is it at the increment bound?
+  /// Is it at the increment bound?
   fn is_at_increment_bound(&self) -> bool;
-  // Is it within the increment bound?
+  /// Is it within the increment bound?
   fn is_within_increment_bound(&self) -> bool;
   /// Can decrement 
   fn can_dec(&self) -> bool;
@@ -119,10 +127,22 @@ pub trait CountsNonmotonically {
   fn dec_one(&self);
   /// Is it incrementable based on internal counting behavior settings?
   fn is_decrementable(&self) -> bool;
-  // Is it at the decrement bound?
+  /// Is it at the decrement bound?
   fn is_at_decrement_bound(&self) -> bool;
-  // Is it within the decrement bound?
+  /// Is it within the decrement bound?
   fn is_within_decrement_bound(&self) -> bool;
+}
+impl <C> CountsNonmotonically for &C where C: CountsNonmotonically {
+  fn can_inc(&self) -> bool { (**self).can_inc() }
+  fn inc_one(&self) { (**self).inc_one() }
+  fn is_incrementable(&self) -> bool { (**self).is_incrementable() }
+  fn is_at_increment_bound(&self) -> bool { (**self).is_at_increment_bound() }
+  fn is_within_increment_bound(&self) -> bool { (**self).is_within_increment_bound() }
+  fn can_dec(&self) -> bool { (**self).can_dec() }
+  fn dec_one(&self) { (**self).dec_one() }
+  fn is_decrementable(&self) -> bool { (**self).is_decrementable() }
+  fn is_at_decrement_bound(&self) -> bool { (**self).is_at_decrement_bound() }
+  fn is_within_decrement_bound(&self) -> bool { (**self).is_within_decrement_bound() }
 }
 
 /// Something that is a counter 
@@ -132,4 +152,13 @@ pub trait IsCounter: HasCountingBehavior + CountsNonmotonically {
   fn get_ordering_ref(&self) -> &core::sync::atomic::Ordering;
   /// Get the current value with the preset ordering 
   fn get_current(&self) -> Self::Unit;
+}
+impl <C> IsCounter for &C where  C: IsCounter {
+  type Unit = <C as IsCounter>::Unit;
+  fn get_ordering_ref(&self) -> &core::sync::atomic::Ordering {
+    <C as IsCounter>::get_ordering_ref(&*self)
+  }
+  fn get_current(&self) -> Self::Unit {
+    <C as IsCounter>::get_current(&*self)
+  }
 }
